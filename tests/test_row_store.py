@@ -2,6 +2,7 @@
 import concurrent.futures
 import ctypes as C
 import json
+import os
 from pathlib import Path
 import random
 import tempfile
@@ -19,6 +20,7 @@ class Work(C.Structure):
 
 lib.row_store_lookup.argtypes = [C.POINTER(Work)]
 rows = 4099
+mode = os.environ.get('OFFLOAD_MODE', 'ram')
 rng = random.Random(413)
 weights, scales = rng.randbytes(rows * 256), rng.randbytes(rows * 8)
 offset = 777
@@ -44,5 +46,10 @@ with tempfile.NamedTemporaryFile() as f:
         lib.row_store_stats(store, stats)
         assert stats[0] + stats[1] == checked
         assert stats[3] <= budget
+        if mode == 'ram':
+            assert stats[2] == 0, 'RAM mode must not perform direct reads'
+            assert stats[3] == 0, 'RAM mode must not allocate a row cache'
+        else:
+            assert stats[2] > 0, 'NVMe mode must exercise direct reads'
         print(json.dumps(dict(budget=budget, checked=checked, hits=stats[0], misses=stats[1], reads=stats[2], passed=True)))
         lib.row_store_close(store)

@@ -134,7 +134,7 @@ def smoke():
     print('Structured output, tool round trip and full-budget native vision passed.',flush=True)
 
 def serve():
-    mode = os.environ.get('OFFLOAD_MODE','nvme')
+    mode = os.environ.get('OFFLOAD_MODE','ram')
     assert mode in ('nvme','ram'), 'OFFLOAD_MODE must be nvme or ram'
     context = int(os.environ.get('CONTEXT_LENGTH','409600'))
     chunk = int(os.environ.get('CHUNKED_PREFILL_SIZE','2048'))

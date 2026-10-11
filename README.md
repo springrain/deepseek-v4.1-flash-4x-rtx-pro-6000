@@ -52,9 +52,46 @@ curl http://127.0.0.1:8010/v1/chat/completions \
   -d '{"model":"deepseek-v4.1-flash","messages":[{"role":"user","content":"What is 19 + 23?"}],"chat_template_kwargs":{"thinking":false}}'
 ```
 
+### RAM serving with the native SGLang command (SM120)
+
+[Dockerfile.ram](Dockerfile.ram) uses the same pinned SGLang base and includes the SM120 FlashMLA compatibility patch and DeepGEMM indexer fix for RTX PRO 6000 Blackwell. It inherits the official image's `ENTRYPOINT` and `CMD`; supply `python3 -m sglang.launch_server` and all serving arguments when starting the container. Engram tables are prefaulted into shared RAM mappings and locked with `mlock`; inference does not use the NVMe row reader or its bounded cache.
+
+Provide the complete checkpoint at the pinned revision above. Model files can remain on a normal filesystem: they are read during loading, while Engram stays resident in RAM afterward. Allow roughly 189 GiB for Engram plus at least 24 GiB of available host-memory headroom. RAM serving still needs full-model validation on the target host.
+
+```bash
+docker build -f Dockerfile.ram -t fedismoss/sglang:deepseek-v41-sm120 .
+```
+
+Start it using the official SGLang command style. The model path, TP/EP sizes, DSpark settings, memory fraction, context length and port below are runtime arguments:
+
+```bash
+docker run --rm --gpus all --ipc=host \
+  --cap-add IPC_LOCK --ulimit memlock=-1:-1 \
+  -p 127.0.0.1:8000:8000 \
+  -v /absolute/path/to/DeepSeek-V4.1-Flash:/models/DeepSeek-V4.1-Flash:ro \
+  deepseek-v41-sm120-ram:local \
+  python3 -m sglang.launch_server \
+    --model-path /models/DeepSeek-V4.1-Flash \
+    --served-model-name deepseek-v4.1-flash \
+    --trust-remote-code --load-format safetensors \
+    --tp 4 --ep-size 4 \
+    --attention-backend dsv4 --moe-runner-backend flashinfer_mxfp4 \
+    --mem-fraction-static 0.85 --chunked-prefill-size 2048 \
+    --context-length 409600 --max-running-requests 8 \
+    --cuda-graph-max-bs-decode 8 --min-free-slots-delay 1 --random-seed 0 \
+    --speculative-algorithm DSPARK --speculative-dspark-block-size 5 \
+    --enable-decoder-swa-bounded-replay \
+    --tool-call-parser deepseekv41 --reasoning-parser deepseek-v41 \
+    --host 0.0.0.0 --port 8000
+```
+
+The adapter code defaults to RAM mode with zero row-cache budget; `Dockerfile.ram` does not need `OFFLOAD_MODE` or `DSV41_CACHE_GIB` environment settings. Explicit environment values can still override these defaults for existing NVMe launchers. The adapter automatically reads the local checkpoint directory from `--model-path /your/model/path` or `--model-path=/your/model/path`, resolves it to an absolute path and passes it to every worker; no manual `DSV41_SOURCE` setting is needed. An explicit `DSV41_SOURCE` remains supported for existing launchers, with the CLI path taking precedence.
+
+`mlock` must succeed or startup aborts. On Linux, a sufficient `RLIMIT_MEMLOCK` permits locking without `CAP_IPC_LOCK`; a process with an effective `CAP_IPC_LOCK` can bypass that limit. See the [Linux mlock documentation](https://github.com/mkerrisk/man-pages/blob/master/man2/mlock.2). The example above supplies both Docker options, but in a standard Linux Docker container `--ulimit memlock=-1:-1` is sufficient without `--cap-add IPC_LOCK`, assuming sufficient available memory. If the container already inherits a sufficient memlock limit, neither option needs to be specified. Configure authentication with SGLang's `--api-key` argument when needed. This image uses native CLI arguments rather than `boot.py`'s environment-variable settings or its download, verification and smoke-test workflow.
+
 ## 3. Configuration
 
-| Setting | Default | Current speed-sweep candidate |
+| Setting | Compose default | Current speed-sweep candidate |
 |---|---:|---:|
 | `OFFLOAD_MODE` | `nvme` | `nvme` |
 | `DSV41_CACHE_GIB` | 64 | 64 |

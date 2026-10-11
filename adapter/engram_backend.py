@@ -1,4 +1,4 @@
-"""Bounded exact file-backed replacement for EngramEmbedding's owned-row gather.
+"""Exact resident-RAM or file-backed EngramEmbedding owned-row gather.
 
 The original hash, gating, projections, TP all-reduce and model remain unchanged.
 Native callback executes IO inside CUDA graphs without calling the CUDA API.
@@ -50,7 +50,7 @@ def install(module):
         w, s = header[prefix+'weight'], header[prefix+'scale']
         assert w['shape'] == [num_embeddings, 256] and w['dtype'] == 'F8_E4M3'
         assert s['shape'] == [num_embeddings, 8] and s['dtype'] == 'F8_E8M0'
-        budget = int(float(os.getenv('DSV41_CACHE_GIB', '64')) * 2**30) // (2*self.tp_size)
+        budget = int(float(os.getenv('DSV41_CACHE_GIB', '0')) * 2**30) // (2*self.tp_size)
         self._store = _lib.row_store_open(str(filename).encode(), num_embeddings,
             8+length+w['data_offsets'][0], 8+length+s['data_offsets'][0], budget)
         if not self._store:
@@ -68,7 +68,7 @@ def install(module):
         self.weight.weight_loader = validate_weight
         self.scale.weight_loader = validate_weight
         logging.getLogger(__name__).info('Exact %s Engram layer=%s rank=%s rows=[%s,%s) cache_budget=%s',
-                                        os.getenv('OFFLOAD_MODE', 'nvme'), layer_id, rank, self.row_start, end, budget)
+                                        os.getenv('OFFLOAD_MODE', 'ram'), layer_id, rank, self.row_start, end, budget)
 
     def owned(self, indices):
         from sglang.kernels.ops.embeddings.engram_gather import engram_gather

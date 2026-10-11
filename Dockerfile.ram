@@ -1,0 +1,15 @@
+# Native SGLang launch with the repository's SM120 fixes and locked RAM Engram.
+FROM lmsysorg/sglang:v0.5.21
+
+COPY adapter /opt/dsv41/adapter
+RUN g++ -O2 -Wall -Wextra -Werror -std=c++17 -shared -fPIC -pthread \
+    /opt/dsv41/adapter/row_store.cpp -o /opt/dsv41/adapter/librow_store.so
+COPY runtime/flash_mla_sm120.py /sgl-workspace/sglang/python/sglang/kernels/ops/attention/flash_mla_sm120.py
+
+# sitecustomize reads --model-path and enables the Engram adapter and the
+# SM120 indexer fix in every worker, without an extra environment variable.
+# RAM mode and zero cache are defaults in the adapter code.
+ENV PYTHONPATH=/opt/dsv41/adapter:${PYTHONPATH}
+
+# Inherit ENTRYPOINT and CMD from the official SGLang image.
+# Supply python3 -m sglang.launch_server and all its arguments at docker run.

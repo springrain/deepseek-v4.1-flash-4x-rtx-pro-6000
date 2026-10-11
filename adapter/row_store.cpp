@@ -1,4 +1,4 @@
-// Exact immutable FP8 row retrieval; bounded direct-mapped RAM cache.
+// Exact immutable FP8 row retrieval; resident RAM by default, optional row cache.
 // No CUDA calls in the callback: suitable for cudaLaunchHostFunc graph nodes.
 #include <algorithm>
 #include <atomic>
@@ -55,7 +55,7 @@ extern "C" Store *row_store_open(const char *path, uint64_t rows,
                                  uint64_t woff, uint64_t soff, uint64_t budget) {
   auto *s = new Store;
   const char *mode = std::getenv("OFFLOAD_MODE");
-  const bool ram = mode && std::strcmp(mode, "ram") == 0;
+  const bool ram = !mode || std::strcmp(mode, "ram") == 0;
   s->fd = open(path, O_RDONLY | O_CLOEXEC | (ram ? 0 : O_DIRECT));
   if (s->fd < 0) { delete s; return nullptr; }
   struct stat statbuf;

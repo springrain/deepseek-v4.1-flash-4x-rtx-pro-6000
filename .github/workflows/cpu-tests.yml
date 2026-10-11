@@ -13,5 +13,9 @@ jobs:
         run: OFFLOAD_MODE=nvme python3 tests/test_row_store.py
       - name: Locked RAM byte parity
         run: sudo prlimit --memlock=unlimited -- env OFFLOAD_MODE=ram python3 tests/test_row_store.py
+      - name: Default RAM byte parity without environment settings
+        run: sudo prlimit --memlock=unlimited -- env -u OFFLOAD_MODE -u DSV41_CACHE_GIB python3 tests/test_row_store.py
+      - name: Automatic model path and spawn worker activation
+        run: python3 tests/test_sitecustomize.py
       - name: Python syntax
         run: python3 -m compileall -q boot.py adapter tests benchmarks
